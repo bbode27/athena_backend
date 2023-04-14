@@ -26,10 +26,13 @@ const db = getFirestore(app);
 
 import { collection , getDocs } from "firebase/firestore";
 
+let firebase_data = null;
+
 const querySnapshot = await getDocs(collection(db, "Question"));
 console.log("Got snapshot")
 querySnapshot.forEach((doc) => {
   console.log(`${doc.id} => ${doc.data().QuestionText}`);
+  firebase_data = doc.id;
 });
 
 // const docRef = doc(db, "Questions", "RUWn9A6We8LG27N34yo7");
@@ -56,7 +59,7 @@ io.on("connection", (socket) => {
   console.log("connected to 80");
   socket.on("join", () => {
       console.log("received from front end");
-      socket.emit("back_end_join")
+      socket.emit("back_end_join", firebase_data);
   });
 });
 
