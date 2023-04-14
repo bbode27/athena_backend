@@ -1,0 +1,77 @@
+const express = require('express');
+const app = express();
+const http = require('http');
+const server = http.createServer(app);
+const { Server } = require("socket.io");
+const io = new Server(server);
+const port = 80;
+
+const questions = new Map()
+const candidates = {
+    '0': {votes: 0, label: "Javascript", color: randomRGB()},
+    '1': {votes: 0, label: "C#", color: randomRGB()},
+    '2': {votes: 0, label: "Python", color: randomRGB()},
+    '3': {votes: 0, label: "Java", color: randomRGB()}
+}
+questions.set("What is your favorite programming language?", candidates);
+
+const dog_types = {
+    '0': {votes: 0, label: "Golden", color: randomRGB()},
+    '1': {votes: 0, label: "Pug", color: randomRGB()},
+    '2': {votes: 0, label: "Lab", color: randomRGB()},
+    '3': {votes: 0, label: "Crust White Dog", color: randomRGB()} 
+}
+questions.set("What kind of dog do you have?", dog_types);
+
+const keys = questions.keys()
+var question_name = keys.next().value
+var options = questions.get(question_name);
+
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/polling.html');
+  });
+
+server.listen(port, () => {
+    console.log('listening on *:80');
+    console.log(options);
+
+  });
+
+
+io.on("connection",(socket) => {
+    io.emit("update", options);
+
+    socket.on("vote", (index) => {
+
+        if (options[index]){
+            options[index].votes += 1;
+        }
+
+        console.log(options);
+    
+        io.emit("update", options);
+    })
+    
+    socket.on("next_question",() => {
+
+        console.log("next question clicked");
+
+        question_name = keys.next().value;
+        options = questions.get(question_name);
+
+
+        io.emit("new_question", (question_name, options));
+        io.emit("update", options)
+    })
+
+
+})
+
+io.on("join", () => {
+    console.log("received from front end");
+})
+
+function randomRGB() {
+    const r = () => Math.random() * 256 >> 0;
+    return `rgb(${r()}, ${r()}, ${r()})`;
+}
