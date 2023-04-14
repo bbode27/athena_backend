@@ -42,19 +42,27 @@ querySnapshot.forEach((doc) => {
 //   console.log("No such document!");
 // }
 
+import { createServer } from "http";
 import { Server } from "socket.io";
 
-
-const io = new Server(80, {
-  // options
+const httpServer = createServer();
+const io = new Server(httpServer, {
+  cors: {
+    origin: "http://localhost:3000",
+  }
 });
 
 io.on("connection", (socket) => {
-    console.log("connected to 80");
-    socket.on("join", () => {
-        console.log("received from front end");
-    });
+  console.log("connected to 80");
+  socket.on("join", () => {
+      console.log("received from front end");
+      socket.emit("back_end_join")
+  });
 });
+
+httpServer.listen(80);
+
+
 
 console.log("bottom of file");
 
