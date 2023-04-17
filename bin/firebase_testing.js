@@ -52,6 +52,8 @@ import { doc, getDoc } from "firebase/firestore";
 const TCref = collection(db, "Teacher - Course Relationship");
 const SCref = collection(db, "Student - CourseRelationship");
 const Cref = collection(db, "Course");
+
+
 async function readable_table(table_query) {
   let snapshot = await getDocs(table_query);
   let snapshot_map = new Map()
@@ -61,6 +63,11 @@ async function readable_table(table_query) {
   });
   return snapshot_map;
 }
+
+function wrap() {
+  return new Promise((resolve => setTimeout(resolve, 500)));
+}
+
 
 async function getCourseNames(course_relationship_dict) {
   let course_relation_array = []
@@ -73,14 +80,13 @@ async function getCourseNames(course_relationship_dict) {
     const docSnap = await getDoc(docRef);
 
     if (docSnap.exists()) {
-      console.log(docSnap.data());
-      console.log(docSnap.data().Name);
       teacher_courses_names.push(docSnap.data().Name);
     } else {
       // docSnap.data() will be undefined in this case
       console.log("No such document!");
     }
   });
+  await wrap();
   return teacher_courses_names;
 }
 
@@ -109,10 +115,14 @@ io.on("connection", (socket) => {
     const SClist = query(SCref, where("StudentID", "==", signed_in_user_id));
     let TCdict = await readable_table(TClist);
     let teacher_courses_names = await getCourseNames(TCdict);
+    console.log("printing TC");
     console.log(teacher_courses_names);
+    let SCdict = await readable_table(SClist);
+    let student_courses_names = await getCourseNames(SCdict);
+    console.log("printing SC");
+    console.log(student_courses_names);
 
-    let SCdict = readable_table(SClist);
-    socket.emit("all_user_classes", teacher_courses_names, SCdict);
+    socket.emit("all_user_classes", teacher_courses_names, student_courses_names);
   });
 });
 
