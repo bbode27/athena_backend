@@ -1,7 +1,7 @@
 import firebase from "firebase/compat/app";
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
-import { getAuth } from "firebase/auth";
+//import { getAuth } from "firebase/auth";
 
 // TODO: Replace the following with your app's Firebase project configuration
 // See: https://support.google.com/firebase/answer/7015592
@@ -18,7 +18,7 @@ const firebaseConfig = {
 
 // Initialize Firebase
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app)
+//const auth = getAuth(app)
 //console.log(auth)
 
 const db = getFirestore(app);
@@ -48,16 +48,40 @@ querySnapshot.forEach((doc) => {
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { query, where } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 const TCref = collection(db, "Teacher - Course Relationship");
 const SCref = collection(db, "Student - CourseRelationship");
+const Cref = collection(db, "Course");
 async function readable_table(table_query) {
   let snapshot = await getDocs(table_query);
-  snapshot_map = new Map()
+  let snapshot_map = new Map()
   snapshot.forEach((doc) => {
     snapshot_map.set(doc.id, doc.data());
     
   });
   return snapshot_map;
+}
+
+async function getCourseNames(course_relationship_dict) {
+  let course_relation_array = []
+  course_relationship_dict.forEach((table_value) => {
+    course_relation_array.push(table_value.CourseID);
+  });
+  let teacher_courses_names = []
+  course_relation_array.forEach(async (course_id) => {
+    const docRef = doc(db, "Course", course_id);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      console.log(docSnap.data());
+      console.log(docSnap.data().Name);
+      teacher_courses_names.push(docSnap.data().Name);
+    } else {
+      // docSnap.data() will be undefined in this case
+      console.log("No such document!");
+    }
+  });
+  return teacher_courses_names;
 }
 
 
@@ -78,14 +102,17 @@ io.on("connection", (socket) => {
       socket.emit("back_end_join", firebase_data);
   });
 
-  socket.on("user signed in", (authorized_user) => {
+  socket.on("user signed in", async (authorized_user) => {
     console.log(authorized_user);
     signed_in_user_id = authorized_user;
     const TClist = query(TCref, where("TeacherID", "==", signed_in_user_id));
     const SClist = query(SCref, where("StudentID", "==", signed_in_user_id));
-    TCdict = readable_table(TClist);
-    SCdict = readable_table(SClist);
-    socket.emit("all_user_classes", TClist, SClist);
+    let TCdict = await readable_table(TClist);
+    let teacher_courses_names = await getCourseNames(TCdict);
+    console.log(teacher_courses_names);
+
+    let SCdict = readable_table(SClist);
+    socket.emit("all_user_classes", teacher_courses_names, SCdict);
   });
 });
 
