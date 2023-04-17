@@ -28,10 +28,10 @@ import { collection , getDocs } from "firebase/firestore";
 
 let firebase_data = null;
 
-const querySnapshot = await getDocs(collection(db, "Question"));
+const querySnapshot = await getDocs(collection(db, "Teacher - Course Relationship"));
 console.log("Got snapshot")
 querySnapshot.forEach((doc) => {
-  console.log(`${doc.id} => ${doc.data().QuestionText}`);
+  console.log(`${doc.id} => ${doc.data().TeacherID}`);
   firebase_data = doc.id;
 });
 
@@ -47,6 +47,19 @@ querySnapshot.forEach((doc) => {
 
 import { createServer } from "http";
 import { Server } from "socket.io";
+import { query, where } from "firebase/firestore";
+const TCref = collection(db, "Teacher - Course Relationship");
+const SCref = collection(db, "Student - CourseRelationship");
+async function readable_table(table_query) {
+  let snapshot = await getDocs(table_query);
+  snapshot_map = new Map()
+  snapshot.forEach((doc) => {
+    snapshot_map.set(doc.id, doc.data());
+    
+  });
+  return snapshot_map;
+}
+
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -55,11 +68,24 @@ const io = new Server(httpServer, {
   }
 });
 
+let signed_in_user_id = null;
+let user_classes = null;
+
 io.on("connection", (socket) => {
   console.log("connected to 80");
   socket.on("join", () => {
       console.log("received from front end");
       socket.emit("back_end_join", firebase_data);
+  });
+
+  socket.on("user signed in", (authorized_user) => {
+    console.log(authorized_user);
+    signed_in_user_id = authorized_user;
+    const TClist = query(TCref, where("TeacherID", "==", signed_in_user_id));
+    const SClist = query(SCref, where("StudentID", "==", signed_in_user_id));
+    TCdict = readable_table(TClist);
+    SCdict = readable_table(SClist);
+    socket.emit("all_user_classes", TClist, SClist);
   });
 });
 
