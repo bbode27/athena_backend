@@ -28,12 +28,6 @@ import { collection , getDocs } from "firebase/firestore";
 
 let firebase_data = null;
 
-const querySnapshot = await getDocs(collection(db, "Teacher - Course Relationship"));
-console.log("Got snapshot")
-querySnapshot.forEach((doc) => {
-  console.log(`${doc.id} => ${doc.data().TeacherID}`);
-  firebase_data = doc.id;
-});
 
 // const docRef = doc(db, "Questions", "RUWn9A6We8LG27N34yo7");
 // const docSnap = await getDoc(docRef);
@@ -64,6 +58,17 @@ async function readable_table(table_query) {
   return snapshot_map;
 }
 
+async function getCourseSessionIDs(code_query) {
+  let snapshot = await getDocs(code_query);
+  let snapshot_list = [];
+  snapshot.forEach((doc) => {
+    console.log(doc.id, " => ", doc.data());
+    snapshot_list.push(doc.Code);
+  });
+  await wrap();
+  return snapshot_list;
+}
+
 function wrap() {
   return new Promise((resolve => setTimeout(resolve, 500)));
 }
@@ -83,7 +88,8 @@ async function getCourseNames(course_relationship_dict) {
       teacher_courses_names.push(docSnap.data().Name);
     } else {
       // docSnap.data() will be undefined in this case
-      console.log("No such document!");
+      //console.log("No such document!");
+      //do nothing? I think we want to do nothing
     }
   });
   await wrap();
@@ -130,18 +136,37 @@ io.on("connection", (socket) => {
   })
 
   socket.on("add class", async (class_name) => {
+    const class_code = await randomClassCode();
+    await wrap();
     let doc_to_view = await addDoc(collection(db, "Course"), {
-      Name: class_name
+      Name: class_name, Code: class_code
     });
-    console.log("got doc");
-    console.log(doc_to_view.id);
     doc_to_view = await addDoc(collection(db, "Teacher - Course Relationship"), {
       TeacherID: signed_in_user_id, CourseID: doc_to_view.id
     });
-    console.log(doc_to_view.id);
     
   });
 });
+
+async function randomClassCode() {
+  const code_query = query(collection(db, "Course"), where("Code", "==", true));
+  const all_class_codes = await getCourseSessionIDs(code_query);
+  let new_code = generateCode();
+  while(all_class_codes.includes(new_code)) {
+    new_code = generateCode();
+  }
+  return new_code;
+}
+
+function generateCode() {
+  let num1 = Math.floor(Math.random() * 10);
+  let num2 = Math.floor(Math.random() * 10);
+  let num3 = Math.floor(Math.random() * 10);
+  let num4 = Math.floor(Math.random() * 10);
+  let num5 = Math.floor(Math.random() * 10);
+  let num6 = Math.floor(Math.random() * 10);
+  return String(num1) + String(num2) + String(num3) + String(num4) + String(num5) + String(num6);
+}
 
 httpServer.listen(80);
 
