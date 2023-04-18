@@ -48,7 +48,7 @@ querySnapshot.forEach((doc) => {
 import { createServer } from "http";
 import { Server } from "socket.io";
 import { query, where } from "firebase/firestore";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, addDoc } from "firebase/firestore";
 const TCref = collection(db, "Teacher - Course Relationship");
 const SCref = collection(db, "Student - CourseRelationship");
 const Cref = collection(db, "Course");
@@ -111,6 +111,11 @@ io.on("connection", (socket) => {
   socket.on("user signed in", async (authorized_user) => {
     console.log(authorized_user);
     signed_in_user_id = authorized_user;
+
+  });
+
+
+  socket.on("get_class_list", async() => {
     const TClist = query(TCref, where("TeacherID", "==", signed_in_user_id));
     const SClist = query(SCref, where("StudentID", "==", signed_in_user_id));
     let TCdict = await readable_table(TClist);
@@ -121,8 +126,20 @@ io.on("connection", (socket) => {
     let student_courses_names = await getCourseNames(SCdict);
     console.log("printing SC");
     console.log(student_courses_names);
-
     socket.emit("all_user_classes", teacher_courses_names, student_courses_names);
+  })
+
+  socket.on("add class", async (class_name) => {
+    let doc_to_view = await addDoc(collection(db, "Course"), {
+      Name: class_name
+    });
+    console.log("got doc");
+    console.log(doc_to_view.id);
+    doc_to_view = await addDoc(collection(db, "Teacher - Course Relationship"), {
+      TeacherID: signed_in_user_id, CourseID: doc_to_view.id
+    });
+    console.log(doc_to_view.id);
+    
   });
 });
 
