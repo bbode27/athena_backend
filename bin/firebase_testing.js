@@ -101,6 +101,28 @@ async function getCourseNames(course_relationship_dict) {
   return teacher_courses_names;
 }
 
+async function getQSNames(QS_relationship_dict) {
+  let Qs_relation_array = []
+  QS_relationship_dict.forEach((table_value) => {
+    Qs_relation_array.push(table_value.QSID);
+  });
+  let qs_names = []
+  Qs_relation_array.forEach(async (qs_id) => {
+    const docRef = doc(db, "QuestionSet", qs_id);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      qs_names.push(docSnap.data().Name);
+    } else {
+      // docSnap.data() will be undefined in this case
+      //console.log("No such document!");
+      //do nothing? I think we want to do nothing
+    }
+  });
+  await wrap();
+  return qs_names;
+}
+
 
 const httpServer = createServer();
 const io = new Server(httpServer, {
@@ -150,6 +172,7 @@ io.on("connection", (socket) => {
   });
 
   socket.on("clicked on class", async(uid, class_name) => {
+    console.log("clicked on class");
     let teacher_courses_names = await getTeacherClasses(uid);
     let student_courses_names = await getStudentClasses(uid);
     let all_courses = teacher_courses_names.concat(student_courses_names);
@@ -165,7 +188,7 @@ io.on("connection", (socket) => {
         } else {
           role = "student"
         }
-      }
+      };
     });
     const class_code = specific_class.Code;
     socket.emit("class and role", role, class_code, class_name);
@@ -175,11 +198,14 @@ io.on("connection", (socket) => {
     const queryClassID = query(Cref, where("Name", "==", class_name), where("Code", "==", class_code));
     const spefClassDict = await readable_table(queryClassID);
     const spefClassIDAsSet = spefClassDict.keys();
-    const spefClassIdAsList = Array.from(spefClassIDAsSet)
+    const spefClassIdAsList = Array.from(spefClassIDAsSet);
     const spefClassID = spefClassIdAsList[0];
-    console.log(spefClassIdAsList);
-    console.log(spefClassID);
+    const queryCQSRel = query(CQSref, where("CourseID", "==", spefClassID));
+    const CQSReldict = await readable_table(queryCQSRel);
+    const qsNames = await getQSNames(CQSReldict);
+    console.log(qsNames);
   });
+
 });
 
 // generate a new unique class code
