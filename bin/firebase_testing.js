@@ -47,7 +47,8 @@ const TCref = collection(db, "Teacher - Course Relationship");
 const SCref = collection(db, "Student - CourseRelationship");
 const Cref = collection(db, "Course");
 
-
+// turns course list into a readable dictionary
+// cannot be unit tested, as it connects to Firebase
 async function readable_table(table_query) {
   let snapshot = await getDocs(table_query);
   let snapshot_map = new Map()
@@ -58,6 +59,8 @@ async function readable_table(table_query) {
   return snapshot_map;
 }
 
+// returns list of all the course codes
+// used to make sure unique codes are being generated
 async function getCourseSessionIDs(code_query) {
   let snapshot = await getDocs(code_query);
   let snapshot_list = [];
@@ -69,11 +72,12 @@ async function getCourseSessionIDs(code_query) {
   return snapshot_list;
 }
 
+// because javascript is asynchronus, this function prevents skipping over things that need to happen in order
 function wrap() {
   return new Promise((resolve => setTimeout(resolve, 500)));
 }
 
-
+// returns a list of all of the names of the courses a user is in
 async function getCourseNames(course_relationship_dict) {
   let course_relation_array = []
   course_relationship_dict.forEach((table_value) => {
@@ -107,23 +111,28 @@ const io = new Server(httpServer, {
 let signed_in_user_id = null;
 let user_classes = null;
 
+// contains all the functionality to communicate with front end
 io.on("connection", (socket) => {
   console.log("connected to 80");
+
+  // join class
   socket.on("join", () => {
       console.log("received from front end");
       socket.emit("back_end_join", firebase_data);
   });
 
+  // sign in
+  // may not need this later?
   socket.on("user signed in", async (authorized_user) => {
     console.log(authorized_user);
     signed_in_user_id = authorized_user;
 
   });
 
-
-  socket.on("get_class_list", async() => {
-    const TClist = query(TCref, where("TeacherID", "==", signed_in_user_id));
-    const SClist = query(SCref, where("StudentID", "==", signed_in_user_id));
+  // send user their lists of classes
+  socket.on("get_class_list", async (user_id) => {
+    const TClist = query(TCref, where("TeacherID", "==", user_id));
+    const SClist = query(SCref, where("StudentID", "==", user_id));
     let TCdict = await readable_table(TClist);
     let teacher_courses_names = await getCourseNames(TCdict);
     console.log("printing TC");
@@ -135,6 +144,7 @@ io.on("connection", (socket) => {
     socket.emit("all_user_classes", teacher_courses_names, student_courses_names);
   })
 
+  // create a new class
   socket.on("add class", async (class_name) => {
     const class_code = await randomClassCode();
     await wrap();
@@ -148,6 +158,7 @@ io.on("connection", (socket) => {
   });
 });
 
+// generate a new unique class code
 async function randomClassCode() {
   const code_query = query(collection(db, "Course"), where("Code", "==", true));
   const all_class_codes = await getCourseSessionIDs(code_query);
@@ -158,6 +169,7 @@ async function randomClassCode() {
   return new_code;
 }
 
+// generate a six-digit code
 function generateCode() {
   let num1 = Math.floor(Math.random() * 10);
   let num2 = Math.floor(Math.random() * 10);
