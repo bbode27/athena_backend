@@ -46,6 +46,7 @@ import { doc, getDoc, addDoc } from "firebase/firestore";
 const TCref = collection(db, "Teacher - Course Relationship");
 const SCref = collection(db, "Student - CourseRelationship");
 const Cref = collection(db, "Course");
+const CQSref = collection(db, "QS - Course Relationship");
 
 // turns course list into a readable dictionary
 // cannot be unit tested, as it connects to Firebase
@@ -131,18 +132,10 @@ io.on("connection", (socket) => {
 
   // send user their lists of classes
   socket.on("get_class_list", async (user_id) => {
-    const TClist = query(TCref, where("TeacherID", "==", user_id));
-    const SClist = query(SCref, where("StudentID", "==", user_id));
-    let TCdict = await readable_table(TClist);
-    let teacher_courses_names = await getCourseNames(TCdict);
-    console.log("printing TC");
-    console.log(teacher_courses_names);
-    let SCdict = await readable_table(SClist);
-    let student_courses_names = await getCourseNames(SCdict);
-    console.log("printing SC");
-    console.log(student_courses_names);
+    let teacher_courses_names = await getTeacherClasses(user_id);
+    let student_courses_names = await getStudentClasses(user_id);
     socket.emit("all_user_classes", teacher_courses_names, student_courses_names);
-  })
+  });
 
   // create a new class
   socket.on("add class", async (class_name) => {
@@ -154,7 +147,38 @@ io.on("connection", (socket) => {
     doc_to_view = await addDoc(collection(db, "Teacher - Course Relationship"), {
       TeacherID: signed_in_user_id, CourseID: doc_to_view.id
     });
-    
+  });
+
+  socket.on("clicked on class", async(uid, class_name) => {
+    let teacher_courses_names = await getTeacherClasses(uid);
+    let student_courses_names = await getStudentClasses(uid);
+    let all_courses = teacher_courses_names.concat(student_courses_names);
+    let role = null;
+    const Clist = query(Cref, where("Name", "==", class_name));
+    const Cdict = await readable_table(Clist);
+    let specific_class = null;
+    Cdict.forEach((key) => {
+      if(all_courses.includes(key.Name)) {
+        specific_class = key
+        if (teacher_courses_names.includes(class_name)) {
+          role = "teacher"
+        } else {
+          role = "student"
+        }
+      }
+    });
+    const class_code = specific_class.Code;
+    socket.emit("class and role", role, class_code, class_name);
+  });
+
+  socket.on("need class QS info", async(class_name, class_code) => {
+    const queryClassID = query(Cref, where("Name", "==", class_name), where("Code", "==", class_code));
+    const spefClassDict = await readable_table(queryClassID);
+    const spefClassIDAsSet = spefClassDict.keys();
+    const spefClassIdAsList = Array.from(spefClassIDAsSet)
+    const spefClassID = spefClassIdAsList[0];
+    console.log(spefClassIdAsList);
+    console.log(spefClassID);
   });
 });
 
@@ -167,6 +191,20 @@ async function randomClassCode() {
     new_code = generateCode();
   }
   return new_code;
+}
+
+async function getTeacherClasses(user_id) {
+  const TClist = query(TCref, where("TeacherID", "==", user_id),);
+  let TCdict = await readable_table(TClist);
+  let teacher_courses_names = await getCourseNames(TCdict);
+  return teacher_courses_names;
+}
+
+async function getStudentClasses(user_id) {
+  const SClist = query(SCref, where("StudentID", "==", user_id));
+  let SCdict = await readable_table(SClist);
+  let student_courses_names = await getCourseNames(SCdict);
+  return student_courses_names;
 }
 
 // generate a six-digit code
