@@ -124,6 +124,7 @@ async function getQSNames(QS_relationship_dict) {
 }
 
 
+
 const httpServer = createServer();
 const io = new Server(httpServer, {
   cors: {
@@ -216,14 +217,35 @@ io.on("connection", (socket) => {
     CQSref = collection(db, "QS - Course Relationship");
     const queryCQSRel = query(CQSref, where("CourseID", "==", spefClassID));
     const CQSReldict = await readable_table(queryCQSRel);
-    const qsNames = await getQSNames(CQSReldict);
-    console.log(qsNames);
+    let qsNames = await getQSNames(CQSReldict);
+    qsNames.sort();
     socket.emit("QS info", qsNames, class_code, class_name);
-    console.log("emmitted");
   });
 
   socket.on("need student info", async (class_name, class_code) => {
-    console.log("working on student info");
+    socket.emit("sending for student nav", class_name, class_code);
+  });
+
+  socket.on("add question set", async(class_name, class_code, qs_name) => {
+    Cref = collection(db, "Course");
+    const queryClassID = query(Cref, where("Name", "==", class_name), where("Code", "==", class_code));
+    const spefClassDict = await readable_table(queryClassID);
+    const spefClassIDAsSet = spefClassDict.keys();
+    const spefClassIdAsList = Array.from(spefClassIDAsSet);
+    const spefClassID = spefClassIdAsList[0];
+    let doc_to_view = await addDoc(collection(db, "QuestionSet"), {
+      Name: qs_name
+    });
+    let new_doc_to_view = await addDoc(collection(db, "QS - Course Relationship"), {
+      CourseID: spefClassID, QSID: doc_to_view.id,
+    });
+    CQSref = collection(db, "QS - Course Relationship");
+    const queryCQSRel = query(CQSref, where("CourseID", "==", spefClassID));
+    const CQSReldict = await readable_table(queryCQSRel);
+    let qsNames = await getQSNames(CQSReldict);
+    console.log(qsNames);
+    qsNames.sort();
+    socket.emit("QS info", qsNames, class_code, class_name);
   });
 
 });
