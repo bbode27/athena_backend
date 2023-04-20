@@ -139,9 +139,15 @@ io.on("connection", (socket) => {
   console.log("connected to 80");
 
   // join class
-  socket.on("join", () => {
-      console.log("received from front end");
-      socket.emit("back_end_join", firebase_data);
+  socket.on("join", async (uid, class_code) => {
+    Cref = collection(db, "Course");
+    let code_query = query(Cref, where("Code", "==", class_code));
+    let code_dict = await readable_table(code_query);
+    let course_id_list = Array.from(code_dict.keys());
+    let course_id = course_id_list[0];
+    let new_doc_to_view = await addDoc(collection(db, "Student - CourseRelationship"), {
+      StudentID: uid, CourseID: course_id
+    });
   });
 
   // sign in
@@ -160,18 +166,19 @@ io.on("connection", (socket) => {
   });
 
   // create a new class
-  socket.on("add class", async (class_name) => {
+  socket.on("add class", async (uid, class_name) => {
     const class_code = await randomClassCode();
     await wrap();
     let doc_to_view = await addDoc(collection(db, "Course"), {
       Name: class_name, Code: class_code
     });
-    doc_to_view = await addDoc(collection(db, "Teacher - Course Relationship"), {
-      TeacherID: signed_in_user_id, CourseID: doc_to_view.id
+    let new_doc_to_view = await addDoc(collection(db, "Teacher - Course Relationship"), {
+      TeacherID: uid, CourseID: doc_to_view.id
     });
   });
 
   socket.on("clicked on class", async(uid, class_name) => {
+    //most likely will rewrite this function? maybe can fix it by just passing code as well
     console.log("clicked on class");
     let teacher_courses_names = await getTeacherClasses(uid);
     let student_courses_names = await getStudentClasses(uid);
@@ -213,6 +220,10 @@ io.on("connection", (socket) => {
     console.log(qsNames);
     socket.emit("QS info", qsNames, class_code, class_name);
     console.log("emmitted");
+  });
+
+  socket.on("need student info", async (class_name, class_code) => {
+    console.log("working on student info");
   });
 
 });
