@@ -224,10 +224,14 @@ io.on("connection", (socket) => {
   });
 
   socket.on("need student info", async (class_name, class_code) => {
-    console.log("student joined room");
     console.log(class_code);
-    socket.join(class_code);
+    socket.join("waiting");
     socket.emit("sending for student nav", class_name, class_code);
+  });
+
+  socket.on("need to join room", (class_code) => {
+    console.log("student joined room");
+    socket.join(class_code);
   });
 
   socket.on("add question set", async(class_name, class_code, qs_name) => {
@@ -281,8 +285,8 @@ io.on("connection", (socket) => {
     }
     console.log(class_code);
     socket.join(class_code);
-    socket.emit("teacher started session", class_code);
-    socket.to(class_code).emit("teacher started session");
+    io.emit("teacher started session", class_code);
+    //socket.to(class_code).emit("teacher started session", class_code);
     console.log("did start session");
   });
 
