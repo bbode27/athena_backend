@@ -47,6 +47,7 @@ let TCref = collection(db, "Teacher - Course Relationship");
 let SCref = collection(db, "Student - CourseRelationship");
 let Cref = collection(db, "Course");
 let CQSref = collection(db, "QS - Course Relationship");
+let QSref = collection(db, "QuestionSet");
 
 // turns course list into a readable dictionary
 // cannot be unit tested, as it connects to Firebase
@@ -223,6 +224,9 @@ io.on("connection", (socket) => {
   });
 
   socket.on("need student info", async (class_name, class_code) => {
+    console.log("student joined room");
+    console.log(class_code);
+    socket.join(class_code);
     socket.emit("sending for student nav", class_name, class_code);
   });
 
@@ -247,6 +251,45 @@ io.on("connection", (socket) => {
     qsNames.sort();
     socket.emit("QS info", qsNames, class_code, class_name);
   });
+
+  socket.on("need all questions in set", async(qs_name) => {
+    console.log("pressed view", qs_name);
+  })
+
+  socket.on("starting session", async(qs_name) => {
+    console.log("pressed start", qs_name);
+    QSref = collection(db, "QuestionSet");
+    const qs_query = query(QSref, where("Name", "==", qs_name));
+    const qs_dict = await readable_table(qs_query);
+    const qs_ids = Array.from(qs_dict.keys());
+    const qs_id = qs_ids[0];
+    CQSref = collection(db, "QS - Course Relationship");
+    const queryCQSRel = query(CQSref, where("QSID", "==", qs_id));
+    const CQSReldict = await readable_table(queryCQSRel);
+    const rel_ids = Array.from(CQSReldict.keys());
+    const rel_id = rel_ids[0];
+    const course_id = CQSReldict.get(rel_id).CourseID;
+    const docRef = doc(db, "Course", course_id);
+    const docSnap = await getDoc(docRef);
+    let class_code = null;
+    if (docSnap.exists()) {
+      class_code = docSnap.data().Code;
+    } else {
+      // docSnap.data() will be undefined in this case
+      //console.log("No such document!");
+      //do nothing? I think we want to do nothing
+    }
+    console.log(class_code);
+    socket.join(class_code);
+    socket.emit("teacher started session", class_code);
+    socket.to(class_code).emit("teacher started session");
+    console.log("did start session");
+  });
+
+  socket.on("for session nav", (class_code) => {
+    console.log("for session nav activated");
+    socket.emit("nav to waitroom", class_code);
+  })
 
 });
 
