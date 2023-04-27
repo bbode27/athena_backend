@@ -278,7 +278,8 @@ async function getStudentClasses(user_id) {
 }
 
 // generate a six-digit code
-function generateCode() {
+// Test this
+export function generateCode() {
   let num1 = Math.floor(Math.random() * 10);
   let num2 = Math.floor(Math.random() * 10);
   let num3 = Math.floor(Math.random() * 10);
