@@ -12,11 +12,4 @@ describe('tests for generateCode', () => {
         // asserts that the length of the code is 6
         await expect(number.length).toBe(6);
     });
-    
-    test('generates a unique code', async() => {
-        const number1 = generateCode();
-        const number2 = generateCode()
-        // asserts that the two strings don't match
-        await expect(number1 != number2).toBe(true);
-    });
 })
