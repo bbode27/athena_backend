@@ -48,6 +48,8 @@ let SCref = collection(db, "Student - CourseRelationship");
 let Cref = collection(db, "Course");
 let CQSref = collection(db, "QS - Course Relationship");
 let QSref = collection(db, "QuestionSet");
+let QSQref = collection(db, "Question - QSRelationship");
+let Qref = collection(db, "Question");
 
 // turns course list into a readable dictionary
 // cannot be unit tested, as it connects to Firebase
@@ -133,22 +135,27 @@ const io = new Server(httpServer, {
   }
 });
 
-let signed_in_user_id = null;
 let user_classes = null;
 
 // contains all the functionality to communicate with front end
 io.on("connection", (socket) => {
   console.log("connected to 80");
+  let signed_in_user_id = null;
+  let teacher_courses_names = null;
+  let student_courses_names = null;
+  let specific_class = null;
+  let specific_QS = null;
+  let users_in_room = [];
 
   // join class
-  socket.on("join", async (uid, class_code) => {
+  socket.on("join", async (class_code) => {
     Cref = collection(db, "Course");
     let code_query = query(Cref, where("Code", "==", class_code));
     let code_dict = await readable_table(code_query);
     let course_id_list = Array.from(code_dict.keys());
     let course_id = course_id_list[0];
     let new_doc_to_view = await addDoc(collection(db, "Student - CourseRelationship"), {
-      StudentID: uid, CourseID: course_id
+      StudentID: signed_in_user_id, CourseID: course_id
     });
   });
 
@@ -161,46 +168,44 @@ io.on("connection", (socket) => {
   });
 
   // send user their lists of classes
-  socket.on("get_class_list", async (user_id) => {
-    let teacher_courses_names = await getTeacherClasses(user_id);
-    let student_courses_names = await getStudentClasses(user_id);
+  socket.on("get_class_list", async () => {
+    teacher_courses_names = await getTeacherClasses(signed_in_user_id);
+    student_courses_names = await getStudentClasses(signed_in_user_id);
+    await wrap();
     socket.emit("all_user_classes", teacher_courses_names, student_courses_names);
   });
 
   // create a new class
-  socket.on("add class", async (uid, class_name) => {
+  socket.on("add class", async (class_name) => {
     const class_code = await randomClassCode();
     await wrap();
     let doc_to_view = await addDoc(collection(db, "Course"), {
       Name: class_name, Code: class_code
     });
     let new_doc_to_view = await addDoc(collection(db, "Teacher - Course Relationship"), {
-      TeacherID: uid, CourseID: doc_to_view.id
+      TeacherID: signed_in_user_id, CourseID: doc_to_view.id
     });
   });
 
-  socket.on("clicked on class", async(uid, class_name) => {
+  socket.on("clicked on class", async(class_name) => {
     //most likely will rewrite this function? maybe can fix it by just passing code as well
     console.log("clicked on class");
-    let teacher_courses_names = await getTeacherClasses(uid);
-    let student_courses_names = await getStudentClasses(uid);
     let all_courses = teacher_courses_names.concat(student_courses_names);
     let role = null;
     Cref = collection(db, "Course");
     const Clist = query(Cref, where("Name", "==", class_name));
     const Cdict = await readable_table(Clist);
-    let specific_class = null;
     Cdict.forEach((key) => {
       if(all_courses.includes(key.Name)) {
         specific_class = key
         if (teacher_courses_names.includes(class_name)) {
           role = "teacher"
           const class_code = specific_class.Code;
-          socket.emit("class and role", role, class_code, class_name);
+          socket.emit("class and role", role);
         } else if (student_courses_names.includes(class_name)) {
           role = "student"
           const class_code = specific_class.Code;
-          socket.emit("class and role", role, class_code, class_name);
+          socket.emit("class and role", role);
         }
       };
     });
@@ -208,9 +213,9 @@ io.on("connection", (socket) => {
 
   });
 
-  socket.on("need class QS info", async(class_name, class_code) => {
+  socket.on("need class QS info", async() => {
     Cref = collection(db, "Course");
-    const queryClassID = query(Cref, where("Name", "==", class_name), where("Code", "==", class_code));
+    const queryClassID = query(Cref, where("Name", "==", specific_class.Name), where("Code", "==", specific_class.Code));
     const spefClassDict = await readable_table(queryClassID);
     const spefClassIDAsSet = spefClassDict.keys();
     const spefClassIdAsList = Array.from(spefClassIDAsSet);
@@ -220,23 +225,30 @@ io.on("connection", (socket) => {
     const CQSReldict = await readable_table(queryCQSRel);
     let qsNames = await getQSNames(CQSReldict);
     qsNames.sort();
-    socket.emit("QS info", qsNames, class_code, class_name);
+    socket.emit("QS info", qsNames, specific_class.Code, specific_class.Name);
   });
 
-  socket.on("need student info", async (class_name, class_code) => {
-    console.log(class_code);
+  socket.on("need student info", async () => {
+    socket.emit("sending for student nav", specific_class.Name, specific_class.Code);
     socket.join("waiting");
-    socket.emit("sending for student nav", class_name, class_code);
+    const rooms = io.of("/").adapter.rooms;
+    if(rooms.get(specific_class.Code)) {
+      socket.leave("waiting");
+      socket.join(specific_class.Code);
+      socket.emit("student joined room");
+      console.log("student joined room emmitted");
+      if(!users_in_room.includes(signed_in_user_id)){
+        users_in_room.push(signed_in_user_id);
+      }
+      console.log(users_in_room);
+      socket.emit("students in room list", users_in_room);
+    }
   });
 
-  socket.on("need to join room", (class_code) => {
-    console.log("student joined room");
-    socket.join(class_code);
-  });
 
-  socket.on("add question set", async(class_name, class_code, qs_name) => {
+  socket.on("add question set", async(qs_name) => {
     Cref = collection(db, "Course");
-    const queryClassID = query(Cref, where("Name", "==", class_name), where("Code", "==", class_code));
+    const queryClassID = query(Cref, where("Name", "==", specific_class.Name), where("Code", "==", specific_class.Code));
     const spefClassDict = await readable_table(queryClassID);
     const spefClassIDAsSet = spefClassDict.keys();
     const spefClassIdAsList = Array.from(spefClassIDAsSet);
@@ -253,7 +265,7 @@ io.on("connection", (socket) => {
     let qsNames = await getQSNames(CQSReldict);
     console.log(qsNames);
     qsNames.sort();
-    socket.emit("QS info", qsNames, class_code, class_name);
+    socket.emit("QS info", qsNames, specific_class.Code, specific_class.Name);
   });
 
   socket.on("need all questions in set", async(qs_name) => {
@@ -265,37 +277,66 @@ io.on("connection", (socket) => {
     QSref = collection(db, "QuestionSet");
     const qs_query = query(QSref, where("Name", "==", qs_name));
     const qs_dict = await readable_table(qs_query);
-    const qs_ids = Array.from(qs_dict.keys());
-    const qs_id = qs_ids[0];
-    CQSref = collection(db, "QS - Course Relationship");
-    const queryCQSRel = query(CQSref, where("QSID", "==", qs_id));
-    const CQSReldict = await readable_table(queryCQSRel);
-    const rel_ids = Array.from(CQSReldict.keys());
-    const rel_id = rel_ids[0];
-    const course_id = CQSReldict.get(rel_id).CourseID;
-    const docRef = doc(db, "Course", course_id);
-    const docSnap = await getDoc(docRef);
-    let class_code = null;
-    if (docSnap.exists()) {
-      class_code = docSnap.data().Code;
-    } else {
-      // docSnap.data() will be undefined in this case
-      //console.log("No such document!");
-      //do nothing? I think we want to do nothing
-    }
-    console.log(class_code);
-    socket.join(class_code);
-    io.emit("teacher started session", class_code);
-    //socket.to(class_code).emit("teacher started session", class_code);
+    const qs_keys = qs_dict.keys();
+    const first_key = qs_keys.next().value;
+    specific_QS = first_key
+    socket.join(specific_class.Code);
+    socket.join("waiting");
+    socket.to("waiting").emit("teacher started session", specific_class.Code);
+    socket.to(specific_class.Code).emit("teacher started session", specific_class.Code);
+    socket.leave("waiting");
+    socket.emit("teacher started session");
     console.log("did start session");
   });
 
-  socket.on("for session nav", (class_code) => {
+  socket.on("get class info", async () => {
     console.log("for session nav activated");
-    socket.emit("nav to waitroom", class_code);
-  })
+    socket.emit("nav to waitroom", specific_class, users_in_room);
+  });
+
+  socket.on("starting questions", async() => {
+    socket.to(specific_class.Code).emit("teacher started questions");
+    QSQref = collection(db, "Question - QSRelationship");
+    console.log(specific_QS);
+    const queryQSQrel = query(QSQref, where("QuestionSetID", "==", specific_QS));
+    const questions_dict = await readable_table(queryQSQrel);
+    Qref = collection(db, "Question");
+    let list_of_QIDs = []
+    questions_dict.forEach((questionID) => {
+      let QID = questionID.QuestionID;
+      list_of_QIDs.push(QID);
+    });
+    await wrap();
+    let questions_list = []
+    list_of_QIDs.forEach(async (questionID) => {
+      const docRef = doc(db, "Question", questionID);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        questions_list.push(docSnap.data());
+      }
+    });
+    await wrap();
+    specific_QS = questions_list.values();
+    let next_question = specific_QS.next().value;
+    console.log(next_question);
+    socket.emit("next question", next_question);
+  });
+
+  socket.on("teacher started session", () => {
+    if(!users_in_room.includes(signed_in_user_id)){
+      users_in_room.push(signed_in_user_id);
+    }
+    console.log(users_in_room);
+    socket.emit("students in room list", users_in_room);
+  });
+
+
 
 });
+
+async function getQuestionsforQS()  {
+  return null;
+}
 
 // generate a new unique class code
 async function randomClassCode() {
