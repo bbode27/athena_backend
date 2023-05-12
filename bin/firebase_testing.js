@@ -322,21 +322,17 @@ io.on("connection", (socket) => {
     socket.to(specific_class.Code).emit("next question", next_question);
   });
 
-  socket.on("need next question", () => {
-    let next_question = null;
-    specific_QS.hasNext = function hasNext() {
-      const r = this.next();
-      this.current = r.value;
-      return !r.done;
-    }
-    if (specific_QS.hasNext()) {
-      next_question = specific_QS.next();
-      console.log(next_question);
+  socket.on("need next question", async() => {
+    let next_question = await specific_QS.next();
+    await wrap();
+    if(next_question.done == false) {
+      next_question = next_question.value;
       socket.emit("next question", next_question);
       socket.to(specific_class.Code).emit("next question", next_question);
     } else {
       endSession();
     }
+
   });
 
   socket.on("teacher started session", () => {
@@ -363,6 +359,7 @@ io.on("connection", (socket) => {
 
   function endSession() {
     console.log("endSession running");
+    socket.emit("teacher ended session");
     socket.to(specific_class.Code).emit("teacher ended session");
     socket.leave(specific_class.Code);
   };
