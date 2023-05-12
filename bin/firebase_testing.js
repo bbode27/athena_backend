@@ -241,7 +241,7 @@ io.on("connection", (socket) => {
         users_in_room.push(signed_in_user_id);
       }
       console.log(users_in_room);
-      socket.emit("students in room list", users_in_room);
+      socket.to(specific_class.Code).emit("students in room list", users_in_room);
     }
   });
 
@@ -287,17 +287,15 @@ io.on("connection", (socket) => {
     socket.leave("waiting");
     socket.emit("teacher started session");
     console.log("did start session");
+    socket.emit("nav to waitroom", specific_class);
+    socket.to(specific_class.Code).emit("nav to waitroom", specific_class);
   });
 
-  socket.on("get class info", async () => {
-    console.log("for session nav activated");
-    socket.emit("nav to waitroom", specific_class, users_in_room);
-  });
+
 
   socket.on("starting questions", async() => {
     socket.to(specific_class.Code).emit("teacher started questions");
     QSQref = collection(db, "Question - QSRelationship");
-    console.log(specific_QS);
     const queryQSQrel = query(QSQref, where("QuestionSetID", "==", specific_QS));
     const questions_dict = await readable_table(queryQSQrel);
     Qref = collection(db, "Question");
@@ -317,12 +315,32 @@ io.on("connection", (socket) => {
     });
     await wrap();
     specific_QS = questions_list.values();
+    await wrap();
     let next_question = specific_QS.next().value;
     console.log(next_question);
     socket.emit("next question", next_question);
+    socket.to(specific_class.Code).emit("next question", next_question);
+  });
+
+  socket.on("need next question", () => {
+    let next_question = null;
+    specific_QS.hasNext = function hasNext() {
+      const r = this.next();
+      this.current = r.value;
+      return !r.done;
+    }
+    if (specific_QS.hasNext()) {
+      next_question = specific_QS.next();
+      console.log(next_question);
+      socket.emit("next question", next_question);
+      socket.to(specific_class.Code).emit("next question", next_question);
+    } else {
+      endSession();
+    }
   });
 
   socket.on("teacher started session", () => {
+    socket.join(specific_class.Code);
     if(!users_in_room.includes(signed_in_user_id)){
       users_in_room.push(signed_in_user_id);
     }
@@ -330,13 +348,31 @@ io.on("connection", (socket) => {
     socket.emit("students in room list", users_in_room);
   });
 
+  socket.on("answering question", (answer) => {
+    console.log(answer);
+    socket.to(specific_class.Code).emit("student answered", signed_in_user_id, answer);
+  });
+
+  socket.on("end session", () => {
+    endSession();
+  })
+
+  socket.on("need to leave room", () => {
+    socket.leave(specific_class.Code);
+  });
+
+  function endSession() {
+    console.log("endSession running");
+    socket.to(specific_class.Code).emit("teacher ended session");
+    socket.leave(specific_class.Code);
+  };
+
 
 
 });
 
-async function getQuestionsforQS()  {
-  return null;
-}
+
+
 
 // generate a new unique class code
 async function randomClassCode() {
