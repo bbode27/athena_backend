@@ -43,6 +43,7 @@ import { createServer } from "http";
 import { Server } from "socket.io";
 import { query, where } from "firebase/firestore";
 import { doc, getDoc, addDoc } from "firebase/firestore";
+import { async } from "@firebase/util";
 let TCref = collection(db, "Teacher - Course Relationship");
 let SCref = collection(db, "Student - CourseRelationship");
 let Cref = collection(db, "Course");
@@ -126,6 +127,28 @@ async function getQSNames(QS_relationship_dict) {
   return qs_names;
 }
 
+async function getQuestionList(question_dict) {
+  let QsQ_relation_array = []
+  question_dict.forEach((table_value) => {
+    QsQ_relation_array.push(table_value.QuestionID);
+  });
+  let question_list = []
+  QsQ_relation_array.forEach(async (question_id) => {
+    const docRef = doc(db, "Question", question_id);
+    const docSnap = await getDoc(docRef);
+
+    if (docSnap.exists()) {
+      question_list.push(docSnap.data());
+    } else {
+      // docSnap.data() will be undefined in this case
+      //console.log("No such document!");
+      //do nothing? I think we want to do nothing
+    }
+  });
+  await wrap();
+  return question_list;
+}
+
 
 
 const httpServer = createServer();
@@ -146,6 +169,7 @@ io.on("connection", (socket) => {
   let specific_class = null;
   let specific_QS = null;
   let users_in_room = [];
+  let spef_QS_id = null;
 
   // join class
   socket.on("join", async (class_code) => {
@@ -270,7 +294,61 @@ io.on("connection", (socket) => {
 
   socket.on("need all questions in set", async(qs_name) => {
     console.log("pressed view", qs_name);
-  })
+    QSref = collection(db, "QuestionSet");
+    const qs_query = query(QSref, where("Name", "==", qs_name));
+    const qs_dict = await readable_table(qs_query);
+    const qs_keys = qs_dict.keys();
+    const first_key = qs_keys.next().value;
+    specific_QS = first_key;
+    spef_QS_id = first_key;
+    QSQref = collection(db, "Question - QSRelationship");
+    const queryQSQrel = query(QSQref, where("QuestionSetID", "==", specific_QS));
+    const questions_dict = await readable_table(queryQSQrel);
+    Qref = collection(db, "Question");
+    let list_of_QIDs = []
+    questions_dict.forEach((questionID) => {
+      let QID = questionID.QuestionID;
+      list_of_QIDs.push(QID);
+    });
+    await wrap();
+    let questions_list = []
+    list_of_QIDs.forEach(async (questionID) => {
+      const docRef = doc(db, "Question", questionID);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        questions_list.push(docSnap.data());
+      }
+    });
+    await wrap();
+    specific_QS = questions_list.values();
+    await wrap();
+    socket.emit("returning question list", Array.from(specific_QS), specific_class.Name);
+
+  });
+
+  socket.on("create question", async (question) => {
+    let doc_to_view = null;
+    
+    if(question.ResponseType === "FR") {
+      doc_to_view = await addDoc(collection(db, "Question"), {
+        QuestionText: question.QuestionText, CorrectAnswers: question.CorrectAnswers, ResponseType: question.ResponseType,
+      });
+    } else {
+      doc_to_view = await addDoc(collection(db, "Question"), {
+        QuestionText: question.QuestionText, CorrectAnswers: question.CorrectAnswers, ResponseType: question.ResponseType, Options: question.Options,
+      });
+    }
+    let new_doc_to_view = await addDoc(collection(db, "Question - QSRelationship"), {
+      QuestionID: doc_to_view.id, QuestionSetID: spef_QS_id,
+    });
+    QSQref = collection(db, "Question - QSRelationship");
+    const queryQSQRel = query(QSQref, where("QuestionSetID", "==", spef_QS_id));
+    const QSQReldict = await readable_table(queryQSQRel);
+    let questionList = await getQuestionList(QSQReldict);
+    console.log(questionList);
+    socket.emit("returning question list", questionList, specific_class.Name);
+
+  });
 
   socket.on("starting session", async(qs_name) => {
     console.log("pressed start", qs_name);
