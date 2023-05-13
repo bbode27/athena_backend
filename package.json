@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node ./bin/firebase_testing.js",
+    "start": "node ./bin/backend.js",
     "test": "jest --forceExit", 
     "type": "module"
   },

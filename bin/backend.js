@@ -170,6 +170,7 @@ io.on("connection", (socket) => {
   let specific_QS = null;
   let users_in_room = [];
   let spef_QS_id = null;
+  let answer_map = null;
 
   // join class
   socket.on("join", async (class_code) => {
@@ -435,9 +436,19 @@ io.on("connection", (socket) => {
     socket.leave(specific_class.Code);
   });
 
+  socket.on("teacher ended session", () => {
+    socket.leave(specific_class.Code);
+  });
+
+  socket.on("sending question results", (answerMapObj) => {
+    answer_map = JSON.parse(JSON.stringify(answerMapObj));
+    console.log(answer_map);
+  })
+
   function endSession() {
     console.log("endSession running");
     socket.emit("teacher ended session");
+    socket.emit("full answer map", answer_map);
     socket.to(specific_class.Code).emit("teacher ended session");
     socket.leave(specific_class.Code);
   };
